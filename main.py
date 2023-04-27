@@ -29,8 +29,8 @@ prompt_helper = PromptHelper(max_input_size, num_output, max_chunk_overlap)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--repo', type=str, required=False)
-parser.add_argument('--read', type=bool, required=False)
-parser.add_argument('--save', type=str, required=False, default=True)
+parser.add_argument('--read', type=bool, required=False, default=False)
+parser.add_argument('--save', type=str, required=False, default=False)
 parser.add_argument('--model', type=str, required=True)
 parser.add_argument('--query', type=str, required=False)
 parser.add_argument('--prompt', type=str, required=False,
@@ -59,21 +59,28 @@ embeddings = HuggingFaceEmbeddings()
 embed_model = LangchainEmbedding(embeddings)
 
 node_parser = SimpleNodeParser(text_splitter=TokenTextSplitter())
-service_context = ServiceContext.from_defaults(llm_predictor=llm_predictor, 
-embed_model=embed_model, node_parser=node_parser, prompt_helper=prompt_helper)
+service_context = ServiceContext.from_defaults(
+    llm_predictor=llm_predictor, embed_model=embed_model, node_parser=node_parser,
+    prompt_helper=prompt_helper
+)
 
 if __name__ == "__main__":
     path_components = args.repo.rsplit(os.path.sep, 1)
     project_name = path_components[-1]
     project_json = f"{project_name}.json"
-    if (args.read):
+    if (os.path.isfile(project_name)):
+        document = Document(args.repo)
+        index = GPTListIndex.from_documents([document], service_context=service_context)
+    elif (args.read is True and os.path.isfile(project_json)):
         index = GPTListIndex.load_from_disk(project_json, service_context=service_context)
     else:
         documents = SimpleDirectoryReader(args.repo, exclude_hidden=True, recursive=True).load_data()
         index = GPTListIndex.from_documents(documents, service_context=service_context)
     
-    output = index.query(args.prompt, service_context=service_context, mode="embedding", response_mode="compact")
+    output = index.query(args.prompt, 
+        service_context=service_context, mode="embedding", response_mode="compact"
+    )
     readme = f"# {project_name}\n\n${output}"
-    if (args.save):
+    if (args.save is True):
         index.save_to_disk(project_json)
     print(readme)
