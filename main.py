@@ -6,17 +6,12 @@ import os
 from subprocess import Popen, PIPE
 import argparse
 import tiktoken
-import faiss
 from langchain.llms import LlamaCpp
-from langchain.vectorstores import FAISS
 from langchain.docstore import InMemoryDocstore
 from langchain.text_splitter import TokenTextSplitter
 from adapter import HuggingFaceEmbeddings
-from llama_index import SimpleDirectoryReader, Document, download_loader, GPTListIndex, GPTFaissIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding
+from llama_index import SimpleDirectoryReader, Document, download_loader, GPTListIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding
 from llama_index.node_parser import SimpleNodeParser
-
-GPTRepoReader = download_loader("GPTRepoReader")
-loader = GPTRepoReader()
 
 # define prompt helper
 # set maximum input size
