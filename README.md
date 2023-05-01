@@ -7,3 +7,12 @@ To use this script, you will need to have langchain installed. You can install i
 ```
 python main.py --repo repo/path --model model/path > README.md :)
 ```
+
+### What is the purpose of the "--readme" argument?
+Input: The "--readme" argument specifies the name of the file where the summary should be written. By default, it is set to "README.md".
+
+### How can you use the "--prompt" argument to generate a summary of the given file?
+Input: You can use the "--prompt" argument to specify the text that will be used as input to the language model. In this case, the prompt is "Summarize the file in README.md format". This prompt tells the language model what kind of output is expected from it.
+
+### What does the "--qa" argument do?
+Input: The "--qa" argument is an optional flag that allows you to run the language model in questiona and answer (QA) mode. When running in QA mode, the language model will iterate through a list of predefined questions.
