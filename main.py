@@ -3,15 +3,14 @@
 # Query index: python3 main.py --repo repo/path --query 'help'
 # Customize readme prompt: python3 main.py --repo repo/path 
 import os
-from subprocess import Popen, PIPE
+from subprocess import PIPE
 import argparse
-import tiktoken
 from langchain.llms import LlamaCpp
-from langchain.docstore import InMemoryDocstore
 from langchain.text_splitter import TokenTextSplitter
 from adapter import HuggingFaceEmbeddings
-from llama_index import SimpleDirectoryReader, Document, download_loader, GPTListIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding
+from llama_index import download_loader, GPTListIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding
 from llama_index.node_parser import SimpleNodeParser
+from llama_index.data_structs import Node
 
 # define prompt helper
 # set maximum input size
@@ -24,35 +23,31 @@ prompt_helper = PromptHelper(max_input_size, num_output, max_chunk_overlap)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--repo', type=str, required=False)
-parser.add_argument('--read', type=bool, required=False, default=False)
-parser.add_argument('--save', type=str, required=False, default=False)
+parser.add_argument('--file', type=str, required=False)
+parser.add_argument('--read', type=str, required=False)
 parser.add_argument('--model', type=str, required=True)
 parser.add_argument('--query', type=str, required=False)
 parser.add_argument('--prompt', type=str, required=False,
-                    default="Summarize these files into a README document")
+                    default="### Human: Summarize the file in README.md format")
+parser.add_argument('--readme', type=str, default="README.md")
 args = parser.parse_args()
 
-# define the local llama model
 llm_predictor = LLMPredictor(
-        llm=LlamaCpp(
-                model_path=args.model, 
-                n_ctx=2048, 
-                use_mlock=True, 
-                top_k=1000, 
-                max_tokens=800, 
-                n_parts=-1, 
-                temperature=0.8, 
-                top_p=0.40,
-                last_n_tokens_size=100,
-                n_threads=6,
-                f16_kv=True
-            )
-        )
-
-
+    llm=LlamaCpp(
+        model_path=args.model, 
+        n_ctx=2048, 
+        max_tokens=800, 
+        n_parts=-1, 
+        temperature=0.8, 
+        top_p=0.40,
+        last_n_tokens_size=1000,
+        n_threads=8,
+        f16_kv=True,
+        use_mlock=True
+    )
+)
 embeddings = HuggingFaceEmbeddings()
 embed_model = LangchainEmbedding(embeddings)
-
 node_parser = SimpleNodeParser(text_splitter=TokenTextSplitter())
 service_context = ServiceContext.from_defaults(
     llm_predictor=llm_predictor, embed_model=embed_model, node_parser=node_parser,
@@ -60,22 +55,33 @@ service_context = ServiceContext.from_defaults(
 )
 
 if __name__ == "__main__":
-    path_components = args.repo.rsplit(os.path.sep, 1)
-    project_name = path_components[-1]
-    project_json = f"{project_name}.json"
-    if (os.path.isfile(project_name)):
-        document = Document(args.repo)
-        index = GPTListIndex.from_documents([document], service_context=service_context)
-    elif (args.read is True and os.path.isfile(project_json)):
-        index = GPTListIndex.load_from_disk(project_json, service_context=service_context)
-    else:
-        documents = SimpleDirectoryReader(args.repo, exclude_hidden=True, recursive=True).load_data()
+    if args.read:
+        index = GPTListIndex.load_from_disk(args.read, service_context=service_context)
+    if args.repo:
+        repo_loader = download_loader("GPTRepoReader")
+        loader = repo_loader()
+        path_components = args.repo.rsplit(os.path.sep, 1)
+        project_name = path_components[-1]
+        project_path = path_components[0]
+        documents = loader.load_data(args.repo)
         index = GPTListIndex.from_documents(documents, service_context=service_context)
+        index.save_to_disk(f"{project_name}.json")
+        output = index.query(args.prompt, service_context=service_context, mode="embedding")    
+        readme = f"# {project_name}\n\n${output}"
+    if args.file:
+        with open(args.file, 'r') as file:
+            document = file.read()
+        index = GPTListIndex.from_documents([Node(document)], service_context=service_context)
+        path_components = args.file.rsplit(os.path.sep, 1)
+        project_name = path_components[-1]
+        project_path = path_components[0]
+        output = index.query(args.prompt, service_context=service_context, mode="embedding")    
+        readme = f"### {project_name}\n\n${output}"
     
-    output = index.query(args.prompt, 
-        service_context=service_context, mode="embedding", response_mode="compact"
-    )
-    readme = f"# {project_name}\n\n${output}"
-    if (args.save is True):
-        index.save_to_disk(project_json)
-    print(readme)
+    readme2 = readme.replace("$### Assistant: ", "")
+    print(readme2)
+    with open(f"{project_path}/{args.readme}", 'a') as file:
+        file.write(readme2)
+        file.close()
+        
+    
