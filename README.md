@@ -5,7 +5,15 @@ The `main.py` script is a Python script that uses langchain to perform language 
 To use this script, you will need to have langchain installed. You can install it by following the instructions provided in the `README.md` file for your specific platform. Once you have installed langchain, you can run the main script, `main.py`, from the command line using the following command:
 
 ```
-python main.py --repo repo/path --model model/path > README.md :)
+python main.py --repo repo/path --model model/path
+```
+
+```
+python main.py --file file/path --model model/path
+```
+
+```
+python main.py --read file/path/readme.json --model model/path --prompt ""
 ```
 
 ### What is the purpose of the "--readme" argument?
