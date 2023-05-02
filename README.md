@@ -17,10 +17,10 @@ python main.py --read file/path/readme.json --model model/path --prompt ""
 ```
 
 ### What is the purpose of the "--readme" argument?
-Input: The "--readme" argument specifies the name of the file where the summary should be written. By default, it is set to "README.md".
+The "--readme" argument specifies the name of the file where the summary should be written. By default, it is set to "README.md".
 
 ### How can you use the "--prompt" argument to generate a summary of the given file?
-Input: You can use the "--prompt" argument to specify the text that will be used as input to the language model. In this case, the prompt is "Summarize the file in README.md format". This prompt tells the language model what kind of output is expected from it.
+You can use the "--prompt" argument to specify the text that will be used as input to the language model. In this case, the prompt is "Summarize the file in README.md format". This prompt tells the language model what kind of output is expected from it.
 
 ### What does the "--qa" argument do?
-Input: The "--qa" argument is an optional flag that allows you to run the language model in questiona and answer (QA) mode. When running in QA mode, the language model will iterate through a list of predefined questions.
+The "--qa" argument is an optional flag that allows you to run the language model in question and answer (QA) mode. When running in QA mode, the language model will iterate through a list of predefined questions.
