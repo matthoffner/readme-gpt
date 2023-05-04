@@ -1,9 +1,8 @@
 import os
-from subprocess import PIPE
 import argparse
 from langchain.llms import LlamaCpp
 from langchain.text_splitter import CharacterTextSplitter
-from llama_index import GPTVectorStoreIndex, download_loader, GPTListIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding, ResponseSynthesizer
+from llama_index import GPTVectorStoreIndex, download_loader, GPTListIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding, ResponseSynthesizer, StorageContext
 from llama_index.indices.postprocessor import SimilarityPostprocessor
 from langchain.chains import ConversationalRetrievalChain
 from llama_index.retrievers import VectorIndexRetriever
@@ -43,21 +42,9 @@ def query_llm(index, prompt, service_context, retriever_mode='embedding', respon
     return query_engine.query(prompt)
 
 
-def readme_generator(qa, questions: [
-    "What does this project do?",
-    "How do I use this project?",
-    "Where can I find more information about related information in this proejct?"
-    "Who are the contributors to this project?",
-    "What is the motivation for this project?"
-]):
-    for question in questions:  
-        result = qa({"question": question, "chat_history": chat_history})
-        output = output + (f"## {question} \n{result['answer']} \n")
-    return output
-
-if __name__ == "__main__":
+def generate_service_context(model):
     llama = LlamaCpp(
-        model_path=args.model, 
+        model_path=model, 
         n_ctx=4096, 
         max_tokens=600, 
         n_parts=-1, 
@@ -74,36 +61,54 @@ if __name__ == "__main__":
     embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "mps"})
     embed_model = LangchainEmbedding(embeddings)
     node_parser = SimpleNodeParser(text_splitter=CharacterTextSplitter(chunk_size=1000))
-    max_input_size = 2048
-    num_output = 1024
-    max_chunk_overlap = 20
-    prompt_helper = PromptHelper(max_input_size, num_output, max_chunk_overlap)
+    prompt_helper = PromptHelper(max_input_size = 2048, num_output = 1024, max_chunk_overlap = 20)
     service_context = ServiceContext.from_defaults(
         llm_predictor=llm_predictor,
         embed_model=embed_model,
         node_parser=node_parser,
         prompt_helper=prompt_helper
     )
+    return service_context
+
+
+def readme_generator(qa, questions: [
+    "What does this project do?",
+    "How do I use this project?",
+    "Where can I find more information about related information in this proejct?"
+    "Who are the contributors to this project?",
+    "What is the motivation for this project?"
+]):
+    for question in questions:  
+        result = qa({"question": question, "chat_history": chat_history})
+        output = output + (f"## {question} \n{result['answer']} \n")
+    return output
+
+def get_project_path(file):
+    path_components = file.rsplit(os.path.sep, 1)
+    project_name = path_components[-1]
+    project_path = path_components[0]
+    return project_name, project_path
+
+if __name__ == "__main__":
+    service_context = generate_service_context(args.model)
 
     if args.read:
-        index = GPTListIndex.load_from_disk(args.read, service_context=service_context)
+        storage_context = StorageContext.from_defaults(persist_dir="<persist_dir>")
+        index = load_index_from_storage(service_context=service_context, storage_context=storage_context)
     if args.repo:
         repo_loader = download_loader("GPTRepoReader")
         loader = repo_loader()
-        path_components = args.repo.rsplit(os.path.sep, 1)
-        project_name = path_components[-1]
-        project_path = path_components[0]
+        project_name, project_path = get_project_path(args.repo)
         documents = loader.load_data(args.repo)
         index = GPTVectorStoreIndex.from_documents(documents, service_context=service_context)
+        index.storage_context.persist(persist_dir=f"{project_path}")
         output = query_llm(index, args.prompt, service_context)
         readme = f"# {project_name}\n\n${output}"
     if args.file:
         with open(args.file, 'r') as file:
             document = file.read()
         index = GPTVectorStoreIndex.from_documents([Node(document)], service_context=service_context)
-        path_components = args.file.rsplit(os.path.sep, 1)
-        project_name = path_components[-1]
-        project_path = path_components[0]
+        project_name, project_path = get_project_path(args.file)
         output = query_llm(index, prompt, service_context)
         readme = f"### {project_name}\n\n${output}"
     if args.qa:
