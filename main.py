@@ -109,7 +109,7 @@ if __name__ == "__main__":
             document = file.read()
         index = GPTVectorStoreIndex.from_documents([Node(document)], service_context=service_context)
         project_name, project_path = get_project_path(args.file)
-        output = query_llm(index, prompt, service_context)
+        output = query_llm(index, args.prompt, service_context)
         readme = f"### {project_name}\n\n${output}"
     if args.qa:
         chat_history = []
