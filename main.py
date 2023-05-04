@@ -2,7 +2,7 @@ import os
 import argparse
 from langchain.llms import LlamaCpp
 from langchain.text_splitter import CharacterTextSplitter
-from llama_index import GPTVectorStoreIndex, download_loader, GPTListIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding, ResponseSynthesizer, StorageContext
+from llama_index import download_loader, load_index_from_storage, GPTVectorStoreIndex, LLMPredictor, PromptHelper, ServiceContext, LangchainEmbedding, ResponseSynthesizer, StorageContext
 from llama_index.indices.postprocessor import SimilarityPostprocessor
 from langchain.chains import ConversationalRetrievalChain
 from llama_index.retrievers import VectorIndexRetriever
