@@ -93,7 +93,7 @@ if __name__ == "__main__":
     service_context = generate_service_context(args.model)
 
     if args.read:
-        storage_context = StorageContext.from_defaults(persist_dir="<persist_dir>")
+        storage_context = StorageContext.from_defaults(persist_dir=f"{args.read}")
         index = load_index_from_storage(service_context=service_context, storage_context=storage_context)
     if args.repo:
         repo_loader = download_loader("GPTRepoReader")
