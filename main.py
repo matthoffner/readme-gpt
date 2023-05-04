@@ -3,24 +3,15 @@ from subprocess import PIPE
 import argparse
 from langchain.llms import LlamaCpp
 from langchain.text_splitter import CharacterTextSplitter
-from adapter import HuggingFaceEmbeddings
 from llama_index import GPTVectorStoreIndex, download_loader, GPTListIndex, LLMPredictor, PromptHelper, ServiceContext, Document, LangchainEmbedding, ResponseSynthesizer
 from llama_index.indices.postprocessor import SimilarityPostprocessor
 from langchain.chains import ConversationalRetrievalChain
 from llama_index.retrievers import VectorIndexRetriever
 from langchain.retrievers.llama_index import LlamaIndexRetriever
+from langchain.embeddings import HuggingFaceEmbeddings
 from llama_index.query_engine import RetrieverQueryEngine
 from llama_index.node_parser import SimpleNodeParser
 from llama_index.data_structs import Node
-
-# define prompt helper
-# set maximum input size
-max_input_size = 2048
-# set number of output tokens
-num_output = 1024
-# set maximum chunk overlap
-max_chunk_overlap = 20
-prompt_helper = PromptHelper(max_input_size, num_output, max_chunk_overlap)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--repo', type=str, required=False)
@@ -80,11 +71,17 @@ if __name__ == "__main__":
     llm_predictor = LLMPredictor(
         llm=llama
     )
-    embeddings = HuggingFaceEmbeddings()
+    embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "mps"})
     embed_model = LangchainEmbedding(embeddings)
     node_parser = SimpleNodeParser(text_splitter=CharacterTextSplitter(chunk_size=1000))
+    max_input_size = 2048
+    num_output = 1024
+    max_chunk_overlap = 20
+    prompt_helper = PromptHelper(max_input_size, num_output, max_chunk_overlap)
     service_context = ServiceContext.from_defaults(
-        llm_predictor=llm_predictor, embed_model=embed_model, node_parser=node_parser,
+        llm_predictor=llm_predictor,
+        embed_model=embed_model,
+        node_parser=node_parser,
         prompt_helper=prompt_helper
     )
 
