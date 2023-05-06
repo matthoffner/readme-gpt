@@ -1,277 +1,123 @@
 import os
-from langchain.llms import LlamaCpp
-from llama_index import (
-    GPTVectorStoreIndex,
-    GPTTreeIndex,
-    GPTKeywordTableIndex,
-    GPTListIndex,
-    ServiceContext
-)
-from llama_index import download_loader
-from llama_index import (
-    Document,
-    LLMPredictor,
-    PromptHelper,
-    QuestionAnswerPrompt,
-    RefinePrompt,
-)
-from googlesearch import search as google_search
-
-from utils import *
-
-import logging
 import argparse
+from langchain.llms import LlamaCpp
+from langchain.text_splitter import CharacterTextSplitter
+from llama_index import download_loader, load_index_from_storage, GPTVectorStoreIndex, LLMPredictor, PromptHelper, ServiceContext, LangchainEmbedding, ResponseSynthesizer, StorageContext
+from llama_index.indices.postprocessor import SimilarityPostprocessor
+from langchain.chains import ConversationalRetrievalChain
+from llama_index.retrievers import VectorIndexRetriever
+from langchain.retrievers.llama_index import LlamaIndexRetriever
+from langchain.embeddings import HuggingFaceEmbeddings
+from llama_index.query_engine import RetrieverQueryEngine
+from llama_index.node_parser import SimpleNodeParser
+from llama_index.data_structs import Node
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, required=False)
+parser.add_argument('--repo', type=str, required=False)
+parser.add_argument('--file', type=str, required=False)
+parser.add_argument('--read', type=str, required=False)
+parser.add_argument('--model', type=str, required=True)
+parser.add_argument('--query', type=str, required=False)
+parser.add_argument('--prompt', type=str, required=False,
+                    default="Summarize the files in a README style")
+parser.add_argument('--readme', type=str, default="README.md")
+parser.add_argument('--qa', type=bool, required=False)
 args = parser.parse_args()
-if args.model is None:
-    model_path = 'ggml-vicuna-7b-q4_0.bin'
-else:
-    model_path = args.model
-
-llm = LlamaCpp(model_path=model_path,
-                n_ctx=500, 
-                use_mlock=True, 
-                top_k=10000, 
-                max_tokens=100, 
-                n_parts=-1, 
-                temperature=0.8, 
-                top_p=0.40,
-                last_n_tokens_size=100,
-                n_threads=4,
-                f16_kv=True)
-
-def get_documents(file_src):
-    documents = []
-    logging.debug("Loading documents...")
-    print(f"file_src: {file_src}")
-    for file in file_src:
-        if type(file) == str:
-            print(f"file: {file}")
-            if "http" in file:
-                logging.debug("Loading web page...")
-                BeautifulSoupWebReader = download_loader("BeautifulSoupWebReader")
-                loader = BeautifulSoupWebReader()
-                documents += loader.load_data([file])
-        else:
-            logging.debug(f"file: {file.name}")
-            if os.path.splitext(file.name)[1] == ".pdf":
-                logging.debug("Loading PDF...")
-                CJKPDFReader = download_loader("CJKPDFReader")
-                loader = CJKPDFReader()
-                documents += loader.load_data(file=file.name)
-            elif os.path.splitext(file.name)[1] == ".epub":
-                logging.debug("Loading EPUB...")
-                EpubReader = download_loader("EpubReader")
-                loader = EpubReader()
-                documents += loader.load_data(file=file.name)
-            else:
-                logging.debug("Loading text file...")
-                with open(file.name, "r", encoding="utf-8") as f:
-                    text = add_space(f.read())
-                    documents += [Document(text)]
-    return documents
 
 
-def construct_index(
-    file_src,
-    index_name,
-    index_type,
-    max_input_size=4096,
-    num_outputs=512,
-    max_chunk_overlap=20,
-    chunk_size_limit=None,
-    embedding_limit=None,
-    separator=" ",
-    num_children=10,
-    max_keywords_per_chunk=10,
-):
-    chunk_size_limit = None if chunk_size_limit == 0 else chunk_size_limit
-    embedding_limit = None if embedding_limit == 0 else embedding_limit
-    separator = " " if separator == "" else separator
+def query_llm(index, prompt, service_context, retriever_mode='embedding', response_mode='tree_summarize'):
+    custom_retriever = VectorIndexRetriever(
+        index=index, 
+        similarity_top_k=2,
+        service_context=service_context
+    )
+    response_synthesizer = ResponseSynthesizer.from_args(
+        service_context=service_context,
+        node_postprocessors=[
+            SimilarityPostprocessor(similarity_cutoff=0.7)
+        ]
+    )
+    retriever = index.as_retriever(retriever_mode=retriever_mode, service_context=service_context)
+    query_engine = RetrieverQueryEngine.from_args(retriever, response_synthesizer=response_synthesizer, response_mode=response_mode,  service_context=service_context)
+    return query_engine.query(prompt)
 
+
+def generate_service_context(model):
+    llama = LlamaCpp(
+        model_path=model, 
+        n_ctx=4096, 
+        max_tokens=600, 
+        n_parts=-1, 
+        temperature=0.8, 
+        top_p=0.40,
+        last_n_tokens_size=400,
+        n_threads=8,
+        f16_kv=True,
+        use_mlock=True
+    )
     llm_predictor = LLMPredictor(
-        llm=llm
+        llm=llama
     )
-    prompt_helper = PromptHelper(
-        max_input_size,
-        num_outputs,
-        max_chunk_overlap,
-        embedding_limit,
-        chunk_size_limit,
-        separator=separator,
+    embeddings = HuggingFaceEmbeddings(model_kwargs={"device": "mps"})
+    embed_model = LangchainEmbedding(embeddings)
+    node_parser = SimpleNodeParser(text_splitter=CharacterTextSplitter(chunk_size=1000))
+    prompt_helper = PromptHelper(max_input_size = 2048, num_output = 1024, max_chunk_overlap = 20)
+    service_context = ServiceContext.from_defaults(
+        llm_predictor=llm_predictor,
+        embed_model=embed_model,
+        node_parser=node_parser,
+        prompt_helper=prompt_helper
     )
-    service_context = ServiceContext.from_defaults(llm_predictor=llm_predictor, prompt_helper=prompt_helper)
-    documents = get_documents(file_src)
-
-    try:
-        if index_type == "_GPTVectorStoreIndex":
-            index = GPTVectorStoreIndex.from_documents(documents, service_context=service_context)
-            index_name += index_type
-        else:
-            index = GPTListIndex.from_documents(documents, service_context=service_context)
-            index_name += index_type
-    except Exception as e:
-        print(e)
-        return None
-
-    save_index(index, index_name)
-    newlist = refresh_json_list(plain=True)
-    return gr.Dropdown.update(choices=newlist, value=index_name)
+    return service_context
 
 
-def chat_ai(
-    index_select,
-    question,
-    prompt_tmpl,
-    refine_tmpl,
-    sim_k,
-    chat_tone,
-    context,
-    chatbot,
-    search_mode=[],
-):
-    if index_select == "search" and search_mode==[]:
-        chatbot.append((question, "❗search"))
-        return context, chatbot
+def readme_generator(qa, questions: [
+    "What does this project do?",
+    "How do I use this project?",
+    "Where can I find more information about related information in this proejct?"
+    "Who are the contributors to this project?",
+    "What is the motivation for this project?"
+]):
+    for question in questions:  
+        result = qa({"question": question, "chat_history": chat_history})
+        output = output + (f"## {question} \n{result['answer']} \n")
+    return output
 
-    logging.info(f"Question: {question}")
+def get_project_path(file):
+    path_components = file.rsplit(os.path.sep, 1)
+    project_name = path_components[-1]
+    project_path = path_components[0]
+    return project_name, project_path
 
-    temprature = 2 if chat_tone == 0 else 1 if chat_tone == 1 else 0.5
-    if search_mode:
-        index_select = search_construct(question, search_mode, index_select)
-    logging.debug(f"Index: {index_select}")
+if __name__ == "__main__":
+    service_context = generate_service_context(args.model)
 
-    response = ask_ai(
-        index_select,
-        question,
-        prompt_tmpl,
-        refine_tmpl,
-        sim_k,
-        temprature,
-        context,
-
-    )
-    print(response)
-
-    if response is None:
-        response = llm._call(question)
-    response = parse_text(response)
-
-    context.append({"role": "user", "content": question})
-    context.append({"role": "assistant", "content": response})
-    chatbot.append((question, response))
-
-    return context, chatbot
-
-
-def ask_ai(
-    index_select,
-    question,
-    prompt_tmpl,
-    refine_tmpl,
-    sim_k=1,
-    temprature=0,
-    prefix_messages=[],
-):
-    index_path = f"./index/{index_select}.json"
-    logging.debug(f"Index path: {index_path}")
-    if not os.path.exists(index_path):
-        logging.debug("Index file not found")
-        return None
-
-    logging.debug("Index file found")
-    logging.debug("Querying index...")
-    prompt_helper = PromptHelper(
-        4096,
-        512,
-        20,
-        None,
-        None,
-        separator=" ",
-    )
-    service_context = ServiceContext.from_defaults(llm_predictor=llm, prompt_helper=prompt_helper)
-
-    response = None  # Initialize response variable to avoid UnboundLocalError
-    if "GPTTreeIndex" in index_select:
-        logging.debug("Using GPTTreeIndex")
-        index = GPTTreeIndex.load_from_disk(index_path)
-        response = index.query(question)
-    elif "GPTKeywordTableIndex" in index_select:
-        logging.debug("Using GPTKeywordTableIndex")
-        index = GPTKeywordTableIndex.load_from_disk(index_path)
-        response = index.query(question)
-    elif "GPTListIndex" in index_select:
-        logging.debug("Using GPTListIndex")
-        index = GPTListIndex.load_from_disk(index_path, service_context=service_context)
-        qa_prompt = QuestionAnswerPrompt(prompt_tmpl)
-        response = index.query(qa_prompt)
-    else:
-        # if "GPTVectorStoreIndex" in index_select or not specified
-        logging.debug("Using GPTVectorStoreIndex")
-        index = GPTVectorStoreIndex.load_from_disk(index_path)
-        qa_prompt = QuestionAnswerPrompt(prompt_tmpl)
-        rf_prompt = RefinePrompt(refine_tmpl)
-        response = index.query(
-            question,
-            similarity_top_k=sim_k,
-            text_qa_template=qa_prompt,
-            refine_template=rf_prompt,
-            response_mode="compact"
-        )
-
-    if response is not None:
-        logging.info(f"Response: {response}")
-        ret_text = response.response
-        ret_text += "\n----------\n"
-        nodes = []
-        for index, node in enumerate(response.source_nodes):
-            nodes.append(f"[{index+1}] {node.source_text}")
-        ret_text += "\n\n".join(nodes)
-        return ret_text
-    else:
-        logging.debug("No response found, returning None")
-        return None
-
-
-def search_construct(question, search_mode, index_select):
-    print(f"You asked: {question}")
-    chat = llm
-    search_terms = (
-        chat.generate(
-            [
-                f"Please extract search terms from the user’s question. The search terms is a concise sentence, which will be searched on Google to obtain relevant information to answer the user’s question, too generalized search terms doesn’t help. Please provide no more than two search terms. Please provide the most relevant search terms only, the search terms should directly correspond to the user’s question. Please separate different search items with commas, with no quote marks. The user’s question is: {question}"
-            ]
-        )
-        .generations[0][0]
-        .text.strip()
-    )
-    search_terms = search_terms.replace('"', "")
-    search_terms = search_terms.replace(".", "")
-    links = []
-    for keywords in search_terms.split(","):
-        keywords = keywords.strip()
-        for search_engine in search_mode:
-            if "Google" in search_engine:
-                print(f"Googling: {keywords}")
-                search_iter = google_search(keywords, num_results=5)
-                links += [next(search_iter) for _ in range(10)]
-            if "Manual" in search_engine:
-                print(f"Searching manually: {keywords}")
-                print("Please input links manually. (Enter 'q' to quit.)")
-                while True:
-                    link = input("Enter link：\n")
-                    if link == "q":
-                        break
-                    else:
-                        links.append(link)
-    links = list(set(links))
-    if len(links) == 0:
-        return index_select
-    print("Extracting data from links...")
-    print("\n".join(links))
-    search_index_name = " ".join(search_terms.split(","))
-    construct_index(links, search_index_name, "GPTVectorStoreIndex")
-    print(f"Index {search_index_name} constructed.")
-    return search_index_name + "_GPTVectorStoreIndex"
+    if args.read:
+        storage_context = StorageContext.from_defaults(persist_dir=f"{args.read}")
+        index = load_index_from_storage(service_context=service_context, storage_context=storage_context)
+    if args.repo:
+        repo_loader = download_loader("GPTRepoReader")
+        loader = repo_loader()
+        project_name, project_path = get_project_path(args.repo)
+        documents = loader.load_data(args.repo)
+        index = GPTVectorStoreIndex.from_documents(documents, service_context=service_context)
+        index.storage_context.persist(persist_dir=f"{project_path}")
+        output = query_llm(index, args.prompt, service_context)
+        readme = f"# {project_name}\n\n${output}"
+    if args.file:
+        with open(args.file, 'r') as file:
+            document = file.read()
+        index = GPTVectorStoreIndex.from_documents([Node(document)], service_context=service_context)
+        project_name, project_path = get_project_path(args.file)
+        output = query_llm(index, args.prompt, service_context)
+        readme = f"### {project_name}\n\n${output}"
+    if args.qa:
+        chat_history = []
+        retriever = LlamaIndexRetriever(index=index)
+        qa = ConversationalRetrievalChain.from_llm(llama, retriever=retriever)
+        output = readme_generator(qa)
+    
+    print(readme)
+    with open(f"{project_path}/{args.readme}", 'a') as file:
+        file.write(readme)
+        file.close()
