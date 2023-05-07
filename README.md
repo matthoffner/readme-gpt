@@ -18,8 +18,6 @@ python main.py --file file/path --model model/path
 
 ## Command mode
 
-For larger codebases you can skip re-indexing and prompt the index.
-
 ```
 python main.py --cmd "git diff main" --model model/path --prompt "Summarize this diff into a commit message'"
 ```
