@@ -3,3 +3,4 @@ llama_index
 llama-cpp-python
 torch
 torchvision
+lark
