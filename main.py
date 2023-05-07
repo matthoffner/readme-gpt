@@ -26,11 +26,6 @@ args = parser.parse_args()
 
 
 def query_llm(index, prompt, service_context, retriever_mode='embedding', response_mode='tree_summarize'):
-    custom_retriever = VectorIndexRetriever(
-        index=index, 
-        similarity_top_k=2,
-        service_context=service_context
-    )
     response_synthesizer = ResponseSynthesizer.from_args(
         service_context=service_context,
         node_postprocessors=[
@@ -71,7 +66,7 @@ def generate_service_context(model):
     return service_context
 
 
-def readme_generator(qa, questions: [
+def readme_generator(qa, questions = [
     "What does this project do?",
     "How do I use this project?",
     "Where can I find more information about related information in this proejct?"
