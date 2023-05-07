@@ -1,19 +1,27 @@
 # readme-gpt
 
-The `main.py` script is a Python script that uses langchain to perform language model training and evaluation on text data. It provides a command-line interface for running various tasks on the text data, including preprocessing, training, and evaluating a language model.
+The `main.py` script is a Python script that performs language model evaluation on text data. It provides a command-line interface for running various tasks on the text data.
 
-To use this script, you will need to have langchain installed. You can install it by following the instructions provided in the `README.md` file for your specific platform. Once you have installed langchain, you can run the main script, `main.py`, from the command line using the following command:
+To use this script, you will need to have dependencies from `requirements.txt` installed.
+
+## Repo mode
 
 ```
 python main.py --repo repo/path --model model/path
 ```
 
+## File mode
+
 ```
 python main.py --file file/path --model model/path
 ```
 
+## Replay mode
+
+For larger codebases you can skip re-indexing and prompt the index.
+
 ```
-python main.py --read file/path/readme.json --model model/path --prompt ""
+python main.py --read file/path/readme.json --model model/path --prompt "Summarize the functions used in this file"
 ```
 
 ### What is the purpose of the "--readme" argument?
