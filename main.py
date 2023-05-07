@@ -1,11 +1,15 @@
 import os
 import argparse
+import subprocess
 from langchain.llms import LlamaCpp
 from langchain.text_splitter import CharacterTextSplitter
-from llama_index import download_loader, load_index_from_storage, GPTVectorStoreIndex, LLMPredictor, PromptHelper, ServiceContext, LangchainEmbedding, ResponseSynthesizer, StorageContext
+from llama_index import ( 
+    download_loader, load_index_from_storage, GPTVectorStoreIndex, 
+    LLMPredictor, PromptHelper, ServiceContext, LangchainEmbedding, 
+    ResponseSynthesizer, StorageContext
+)
 from llama_index.indices.postprocessor import SimilarityPostprocessor
 from langchain.chains import ConversationalRetrievalChain
-from llama_index.retrievers import VectorIndexRetriever
 from langchain.retrievers.llama_index import LlamaIndexRetriever
 from langchain.embeddings import HuggingFaceEmbeddings
 from llama_index.query_engine import RetrieverQueryEngine
@@ -13,6 +17,7 @@ from llama_index.node_parser import SimpleNodeParser
 from llama_index.data_structs import Node
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--cmd', type=str, required=False)
 parser.add_argument('--repo', type=str, required=False)
 parser.add_argument('--file', type=str, required=False)
 parser.add_argument('--read', type=str, required=False)
@@ -22,6 +27,7 @@ parser.add_argument('--prompt', type=str, required=False,
                     default="Summarize the files in a README style")
 parser.add_argument('--readme', type=str, default="README.md")
 parser.add_argument('--qa', type=bool, required=False)
+parser.add_argument('--save', type=bool, required=False, default=False)
 args = parser.parse_args()
 
 
@@ -63,7 +69,7 @@ def generate_service_context(model):
         node_parser=node_parser,
         prompt_helper=prompt_helper
     )
-    return service_context
+    return llama, service_context
 
 
 def readme_generator(qa, questions = [
@@ -85,7 +91,7 @@ def get_project_path(file):
     return project_name, project_path
 
 if __name__ == "__main__":
-    service_context = generate_service_context(args.model)
+    llama, service_context = generate_service_context(args.model)
 
     if args.read:
         storage_context = StorageContext.from_defaults(persist_dir=f"{args.read}")
@@ -106,13 +112,20 @@ if __name__ == "__main__":
         project_name, project_path = get_project_path(args.file)
         output = query_llm(index, args.prompt, service_context)
         readme = f"### {project_name}\n\n${output}"
+    if args.cmd:
+        cmd_output = subprocess.check_output(args.cmd.split(" "))
+        print(cmd_output)
+        index = GPTVectorStoreIndex.from_documents([Node(str(cmd_output))], service_context=service_context)
+        output = query_llm(index, args.prompt, service_context)
+        print(output)
     if args.qa:
         chat_history = []
         retriever = LlamaIndexRetriever(index=index)
         qa = ConversationalRetrievalChain.from_llm(llama, retriever=retriever)
         output = readme_generator(qa)
     
-    print(readme)
-    with open(f"{project_path}/{args.readme}", 'a') as file:
-        file.write(readme)
-        file.close()
+    print(output)
+    if args.save:
+        with open(f"{project_path}/{args.readme}", 'a') as file:
+            file.write(readme)
+            file.close()
