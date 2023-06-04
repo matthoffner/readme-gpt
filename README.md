@@ -38,3 +38,11 @@ This file contains a Python script that uses the `langchain` library to create a
 To use this script, you will need to install the required libraries (`langchain`, `llama_index`, and `huggingface-embeddings`) using pip or another package manager. You will also need to provide a path to your own trained language model as well as any other configuration parameters specified in the script.
 
 Once you have set up the environment, you can run the script by calling the `get_service_context()` function with the path to your trained language model as an argument. This will return a `ServiceContext` object which you can use to generate predictions from your model.
+
+
+## Updates
+
+Here are some frontend experiments with document retrieval:
+
+### Web LLM Embed - WebGPU + transformers.js embeddings chat experience: https://huggingface.co/spaces/matthoffner/web-llm-embed
+### CUDA Doc Chat - Benchmarking llama.cpp with CUDA in a T4 space with GPU acceleration: https://huggingface.co/spaces/matthoffner/llamacpp-cuda-doc-chat
